@@ -87,3 +87,10 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+######
+
+# our own testing and project files/folders.
+config/
+out/
+*.kdev4*
