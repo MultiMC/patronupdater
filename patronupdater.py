@@ -6,12 +6,22 @@ import os
 import configparser
 import json
 import argparse
+# DO NOT ENABLE IN PRODUCTION !!!!
+# import pprint
 
 def process_pledges(data, rewardToScanFor):
 	"""Takes a 'page' of pledges returned by the Patreon API and filters out patrons that are eligible for the specified reward."""
 	processed = []
-	pledges = (pledge for pledge in data['data'] if pledge['type'] == 'pledge')
-
+	pledges = [
+		pledge
+		for pledge in data['data']
+		if pledge['type'] == 'pledge'
+		if pledge['attributes']['declined_since'] == None
+		if pledge['relationships']['reward']['data'] != None
+		if pledge['relationships']['reward']['data']['id'] == rewardToScanFor
+	]
+	# DO NOT ENABLE IN PRODUCTION !!!!
+	# pprint.pprint(pledges)
 	patrons = {
 		patron['id']: patron['attributes']
 		for patron in data['included']
@@ -20,9 +30,9 @@ def process_pledges(data, rewardToScanFor):
 	processed = [
 		patrons[pledge['relationships']['patron']['data']['id']]
 		for pledge in pledges
-		if pledge['relationships']['reward']['data'] != None
-		if pledge['relationships']['reward']['data']['id'] == rewardToScanFor
 	]
+	# DO NOT ENABLE IN PRODUCTION !!!!
+	# pprint.pprint(processed)
 	return processed
 
 def getCurrentRewardedPatrons(accessToken, rewardToScanFor):
