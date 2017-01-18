@@ -8,20 +8,32 @@ import json
 import argparse
 # DO NOT ENABLE IN PRODUCTION !!!!
 # import pprint
+import collections
+
+RewardInfo = collections.namedtuple('RewardInfo', 'rewarded anons')
 
 def process_pledges(data, rewardToScanFor):
 	"""Takes a 'page' of pledges returned by the Patreon API and filters out patrons that are eligible for the specified reward."""
 	processed = []
-	pledges = [
+	valid_pledges = [
 		pledge
 		for pledge in data['data']
 		if pledge['type'] == 'pledge'
-		if pledge['attributes']['declined_since'] == None
+		if pledge['attributes']['is_valid'] == True
+	]
+	rewarded_pledges = [
+		pledge
+		for pledge in valid_pledges
 		if pledge['relationships']['reward']['data'] != None
 		if pledge['relationships']['reward']['data']['id'] == rewardToScanFor
 	]
+	anon_pledges = [
+		pledge
+		for pledge in valid_pledges
+		if pledge['relationships']['reward']['data'] == None
+	]
 	# DO NOT ENABLE IN PRODUCTION !!!!
-	# pprint.pprint(pledges)
+	# pprint.pprint(rewarded_pledges)
 	patrons = {
 		patron['id']: patron['attributes']
 		for patron in data['included']
@@ -29,11 +41,29 @@ def process_pledges(data, rewardToScanFor):
 	}
 	processed = [
 		patrons[pledge['relationships']['patron']['data']['id']]
-		for pledge in pledges
+		for pledge in rewarded_pledges
 	]
 	# DO NOT ENABLE IN PRODUCTION !!!!
 	# pprint.pprint(processed)
-	return processed
+	return RewardInfo(rewarded = processed, anons=len(anon_pledges))
+
+
+class PledgeAttributes(object):
+	amount_cents = 'amount_cents'
+	total_historical_amount_cents = 'total_historical_amount_cents'
+	declined_since = 'declined_since'
+	created_at = 'created_at'
+	pledge_cap_cents = 'pledge_cap_cents'
+	patron_pays_fees = 'patron_pays_fees'
+	unread_count = 'unread_count'
+	is_valid = 'is_valid'
+
+
+my_pledge_attributes = [
+    PledgeAttributes.amount_cents,
+    PledgeAttributes.is_valid,
+    PledgeAttributes.total_historical_amount_cents,
+]
 
 def getCurrentRewardedPatrons(accessToken, rewardToScanFor):
 	"""Gets all the patrons eligible for a specified reward."""
@@ -41,20 +71,26 @@ def getCurrentRewardedPatrons(accessToken, rewardToScanFor):
 	campaign = patreonAPI.fetch_campaign()
 	campaignId = campaign['data'][0]['id']
 	pageSize = 20
-	processed = []
+	anons = 0
+	all_rewarded = []
+	fields = ["is_valid"]
 
-	pledges = patreonAPI.fetch_page_of_pledges(campaignId, pageSize)
+	pledges = patreonAPI.fetch_page_of_pledges(campaignId, pageSize, None, None, { 'pledge': my_pledge_attributes })
 	cursor = patreonAPI.extract_cursor(pledges)
-	processed += process_pledges(pledges, rewardToScanFor)
+	processed = process_pledges(pledges, rewardToScanFor)
+	all_rewarded += processed.rewarded
+	anons += processed.anons
 
 	while 'next' in pledges['links']:
-		pledges = patreonAPI.fetch_page_of_pledges(campaignId, pageSize, cursor)
+		pledges = patreonAPI.fetch_page_of_pledges(campaignId, pageSize, cursor, None, { 'pledge': my_pledge_attributes })
 		cursor = patreonAPI.extract_cursor(pledges)
-		processed += process_pledges(pledges, rewardToScanFor)
+		processed = process_pledges(pledges, rewardToScanFor)
+		all_rewarded += processed.rewarded
+		anons += processed.anons
 
 	# sort by full name
-	processed.sort(key=lambda y: y['full_name'].lower())
-	return processed
+	all_rewarded.sort(key=lambda y: y['full_name'].lower())
+	return RewardInfo(rewarded = all_rewarded, anons=anons)
 
 
 def main(configPath, workPath):
@@ -77,13 +113,19 @@ def main(configPath, workPath):
 	with open(configPath, 'w') as configFile:
 		config.write(configFile)
 
-	rewarded = getCurrentRewardedPatrons(tokens['access_token'], config['Config']['reward'])
+	processed = getCurrentRewardedPatrons(tokens['access_token'], config['Config']['reward'])
 
 	# simple list with one name per line
 	legacylist = [
 		patron['full_name']
-		for patron in rewarded
+		for patron in processed.rewarded
 	]
+	if processed.anons > 0:
+		if processed.anons > 1:
+			legacylist.append('And %d others who wish to remain anonymous.' % processed.anons)
+		else:
+			legacylist.append('And one other who wishes to remain anonymous.' % processed.anons)
+
 	legacylistText = '\n'.join(legacylist)
 
 	# JSON list with names, avatar images and URLs for clickable links to Patreon profiles
@@ -93,7 +135,7 @@ def main(configPath, workPath):
 			'image_url': patron['thumb_url'] if patron['thumb_url'].startswith("http") else 'https:' + patron['thumb_url'],
 			'patreon_url': patron['url']
 		}
-		for patron in rewarded
+		for patron in processed.rewarded
 	]
 	modernlistJson = json.dumps(modernlist, separators=(',',':'))
 
