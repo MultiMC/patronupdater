@@ -7,7 +7,7 @@ import configparser
 import json
 import argparse
 # DO NOT ENABLE IN PRODUCTION !!!!
-# import pprint
+import pprint
 import collections
 
 RewardInfo = collections.namedtuple('RewardInfo', 'rewarded anons')
@@ -19,7 +19,7 @@ def process_pledges(data, rewardToScanFor):
 		pledge
 		for pledge in data['data']
 		if pledge['type'] == 'pledge'
-		if pledge['attributes']['is_valid'] == True
+		if pledge['attributes']['declined_since'] == None
 	]
 	rewarded_pledges = [
 		pledge
@@ -32,8 +32,6 @@ def process_pledges(data, rewardToScanFor):
 		for pledge in valid_pledges
 		if pledge['relationships']['reward']['data'] == None
 	]
-	# DO NOT ENABLE IN PRODUCTION !!!!
-	# pprint.pprint(rewarded_pledges)
 	patrons = {
 		patron['id']: patron['attributes']
 		for patron in data['included']
@@ -43,8 +41,6 @@ def process_pledges(data, rewardToScanFor):
 		patrons[pledge['relationships']['patron']['data']['id']]
 		for pledge in rewarded_pledges
 	]
-	# DO NOT ENABLE IN PRODUCTION !!!!
-	# pprint.pprint(processed)
 	return RewardInfo(rewarded = processed, anons=len(anon_pledges))
 
 
@@ -56,12 +52,11 @@ class PledgeAttributes(object):
 	pledge_cap_cents = 'pledge_cap_cents'
 	patron_pays_fees = 'patron_pays_fees'
 	unread_count = 'unread_count'
-	is_valid = 'is_valid'
 
 
 my_pledge_attributes = [
     PledgeAttributes.amount_cents,
-    PledgeAttributes.is_valid,
+    PledgeAttributes.declined_since,
     PledgeAttributes.total_historical_amount_cents,
 ]
 
@@ -73,7 +68,6 @@ def getCurrentRewardedPatrons(accessToken, rewardToScanFor):
 	pageSize = 20
 	anons = 0
 	all_rewarded = []
-	fields = ["is_valid"]
 
 	pledges = patreonAPI.fetch_page_of_pledges(campaignId, pageSize, None, None, { 'pledge': my_pledge_attributes })
 	cursor = patreonAPI.extract_cursor(pledges)
