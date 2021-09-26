@@ -133,10 +133,10 @@ def main(configPath, workPath):
 	]
 	modernlistJson = json.dumps(modernlist, separators=(',',':'))
 
-	with open(textPath, 'w') as textFile:
+	with open(textPath, mode='w', encoding='utf-8') as textFile:
 		textFile.write(legacylistText)
 
-	with open(jsonPath, 'w') as jsonFile:
+	with open(jsonPath, mode='w', encoding='utf-8') as jsonFile:
 		jsonFile.write(modernlistJson)
 
 	return 0
